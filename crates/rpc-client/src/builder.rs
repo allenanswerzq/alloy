@@ -75,6 +75,42 @@ impl<L> ClientBuilder<L> {
         self.transport(transport, is_local)
     }
 
+    /// Convenience function to create a new [`RpcClient`] with a [`reqwest`]
+    /// plain JSON-over-HTTP transport.
+    #[cfg(feature = "plain-http")]
+    pub fn plain_http(self, url: url::Url) -> RpcClient
+    where
+        L: Layer<
+            alloy_transport_plain_http::PlainHttp<alloy_transport_plain_http::reqwest::Client>,
+        >,
+        L::Service: IntoBoxTransport,
+    {
+        let transport = alloy_transport_plain_http::PlainHttp::new(url);
+        let is_local = transport.guess_local();
+
+        self.transport(transport, is_local)
+    }
+
+    /// Convenience function to create a new [`RpcClient`] with a [`reqwest`]
+    /// plain JSON-over-HTTP transport using a pre-built `reqwest::Client`.
+    #[cfg(feature = "plain-http")]
+    pub fn plain_http_with_client(
+        self,
+        client: alloy_transport_plain_http::reqwest::Client,
+        url: url::Url,
+    ) -> RpcClient
+    where
+        L: Layer<
+            alloy_transport_plain_http::PlainHttp<alloy_transport_plain_http::reqwest::Client>,
+        >,
+        L::Service: IntoBoxTransport,
+    {
+        let transport = alloy_transport_plain_http::PlainHttp::with_client(client, url);
+        let is_local = transport.guess_local();
+
+        self.transport(transport, is_local)
+    }
+
     /// Convenience function to create a new [`RpcClient`] with a `hyper` HTTP transport.
     #[cfg(all(not(target_family = "wasm"), feature = "hyper"))]
     pub fn hyper_http(self, url: url::Url) -> RpcClient

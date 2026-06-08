@@ -1,0 +1,41 @@
+[package]
+name = "alloy-transport-plain-http"
+description = "Plain JSON-over-HTTP transport implementation"
+
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+exclude.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = [
+    "-Zunstable-options",
+    "--generate-link-to-definition",
+    "--show-type-layout",
+]
+
+[lints]
+workspace = true
+
+[dependencies]
+alloy-json-rpc = { workspace = true, optional = true }
+alloy-transport.workspace = true
+
+url.workspace = true
+
+reqwest = { workspace = true, features = ["json"], optional = true }
+serde_json = { workspace = true, optional = true }
+tower = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+
+[features]
+default = ["reqwest", "reqwest-default-tls"]
+reqwest = ["dep:alloy-json-rpc", "dep:reqwest", "dep:serde_json", "dep:tower", "dep:tracing"]
+reqwest-default-tls = ["reqwest?/default-tls"]
+reqwest-native-tls = ["reqwest?/native-tls"]
+reqwest-rustls-tls = ["reqwest?/rustls-tls"]

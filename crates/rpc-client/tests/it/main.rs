@@ -4,6 +4,9 @@
 #[cfg(feature = "reqwest")]
 mod http;
 
+#[cfg(feature = "plain-http")]
+mod plain;
+
 #[cfg(feature = "pubsub")]
 mod ws;
 

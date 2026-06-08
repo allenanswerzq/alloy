@@ -184,7 +184,7 @@ pub mod signers {
     pub use alloy_signer_turnkey as turnkey;
 }
 
-/// Low-level Ethereum JSON-RPC transport abstraction and implementations.
+/// Low-level transport abstraction and implementations.
 ///
 /// You will likely not need to use this module;
 /// see the [`providers`] module for high-level usage of transports.
@@ -208,6 +208,10 @@ pub mod transports {
     #[cfg(feature = "transport-ipc")]
     #[doc(inline)]
     pub use alloy_transport_ipc as ipc;
+
+    #[cfg(feature = "transport-plain-http")]
+    #[doc(inline)]
+    pub use alloy_transport_plain_http as plain_http;
 
     #[cfg(feature = "transport-ws")]
     #[doc(inline)]

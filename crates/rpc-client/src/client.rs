@@ -369,6 +369,17 @@ impl RpcClientInner {
         RpcCall::new(request, self.transport.clone())
     }
 
+    /// Prepares a plain JSON request.
+    ///
+    /// This is intended for transports that use the params as a raw JSON request body instead of a
+    /// JSON-RPC envelope.
+    pub fn request_json<Resp: RpcRecv>(
+        &self,
+        body: serde_json::Value,
+    ) -> RpcCall<serde_json::Value, Resp> {
+        self.request("request_json", body)
+    }
+
     /// Prepares an [`RpcCall`] with no parameters.
     ///
     /// See [`request`](Self::request) for more details.

@@ -26,6 +26,7 @@ workspace = true
 alloy-primitives = { workspace = true, features = ["map"] }
 alloy-json-rpc.workspace = true
 alloy-transport-http = { workspace = true, optional = true }
+alloy-transport-plain-http = { workspace = true, optional = true }
 alloy-transport.workspace = true
 
 futures.workspace = true
@@ -65,6 +66,12 @@ similar-asserts.workspace = true
 default = ["reqwest"]
 reqwest = ["dep:url", "dep:reqwest", "alloy-transport-http/reqwest"]
 hyper = ["dep:url", "alloy-transport-http/hyper"]
+plain-http = [
+    "dep:url",
+    "dep:alloy-transport-plain-http",
+    "alloy-transport-plain-http/reqwest",
+    "alloy-transport-plain-http/reqwest-rustls-tls",
+]
 pubsub = ["dep:alloy-pubsub"]
 ws = ["pubsub", "dep:alloy-transport-ws", "dep:url"]
 ipc = ["pubsub", "dep:alloy-transport-ipc"]
