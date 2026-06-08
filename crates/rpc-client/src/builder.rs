@@ -85,10 +85,32 @@ impl<L> ClientBuilder<L> {
         >,
         L::Service: IntoBoxTransport,
     {
-        let transport = alloy_transport_plain_http::PlainHttp::new(url);
+        let client = alloy_transport_plain_http::reqwest::Client::default();
+        let transport = alloy_transport_plain_http::PlainHttp::with_client(client.clone(), url);
         let is_local = transport.guess_local();
 
-        self.transport(transport, is_local)
+        let rpc = self.transport(transport, is_local);
+        rpc.with_plain_http_client(client)
+    }
+
+    /// Convenience function to create a new [`RpcClient`] with a [`reqwest`]
+    /// plain JSON-over-HTTP transport and a default User-Agent.
+    #[cfg(feature = "plain-http")]
+    pub fn plain_http_with_user_agent(
+        self,
+        url: url::Url,
+        user_agent: impl AsRef<str>,
+    ) -> Result<RpcClient, reqwest::Error>
+    where
+        L: Layer<
+            alloy_transport_plain_http::PlainHttp<alloy_transport_plain_http::reqwest::Client>,
+        >,
+        L::Service: IntoBoxTransport,
+    {
+        let client = alloy_transport_plain_http::reqwest::Client::builder()
+            .user_agent(user_agent.as_ref())
+            .build()?;
+        Ok(self.plain_http_with_client(client, url))
     }
 
     /// Convenience function to create a new [`RpcClient`] with a [`reqwest`]
@@ -105,10 +127,11 @@ impl<L> ClientBuilder<L> {
         >,
         L::Service: IntoBoxTransport,
     {
-        let transport = alloy_transport_plain_http::PlainHttp::with_client(client, url);
+        let transport = alloy_transport_plain_http::PlainHttp::with_client(client.clone(), url);
         let is_local = transport.guess_local();
 
-        self.transport(transport, is_local)
+        let rpc = self.transport(transport, is_local);
+        rpc.with_plain_http_client(client)
     }
 
     /// Convenience function to create a new [`RpcClient`] with a `hyper` HTTP transport.

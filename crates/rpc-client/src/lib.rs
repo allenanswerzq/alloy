@@ -22,6 +22,8 @@ mod call;
 pub use call::RpcCall;
 
 mod client;
+#[cfg(feature = "plain-http")]
+pub use client::http_impl::{HttpRequestBuilder, HttpResponse};
 pub use client::{ClientRef, NoParams, RpcClient, RpcClientInner, WeakClient};
 
 mod poller;

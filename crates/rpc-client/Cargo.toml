@@ -68,6 +68,8 @@ reqwest = ["dep:url", "dep:reqwest", "alloy-transport-http/reqwest"]
 hyper = ["dep:url", "alloy-transport-http/hyper"]
 plain-http = [
     "dep:url",
+    "dep:reqwest",
+    "reqwest?/json",
     "dep:alloy-transport-plain-http",
     "alloy-transport-plain-http/reqwest",
     "alloy-transport-plain-http/reqwest-rustls-tls",

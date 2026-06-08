@@ -1,6 +1,8 @@
 use crate::{poller::PollerBuilder, BatchRequest, ClientBuilder, RpcCall};
 use alloy_json_rpc::{Id, Request, RpcRecv, RpcSend};
-use alloy_transport::{mock::Asserter, BoxTransport, IntoBoxTransport};
+use alloy_transport::{
+    mock::Asserter, BoxTransport, IntoBoxTransport, TransportErrorKind, TransportResult,
+};
 use std::{
     borrow::Cow,
     ops::Deref,
@@ -209,6 +211,9 @@ pub struct RpcClientInner {
     /// `RetryTransport<PubSubFrontend>`.
     #[cfg(feature = "pubsub")]
     pub(crate) pubsub: MaybePubsub,
+    /// Optional direct reqwest client for general HTTP operations.
+    #[cfg(feature = "plain-http")]
+    pub(crate) http_client: Option<reqwest::Client>,
     /// `true` if the transport is local.
     pub(crate) is_local: bool,
     /// The next request ID to use.
@@ -228,6 +233,8 @@ impl RpcClientInner {
             transport: t.into_box_transport(),
             #[cfg(feature = "pubsub")]
             pubsub: None,
+            #[cfg(feature = "plain-http")]
+            http_client: None,
             is_local,
             id: AtomicU64::new(0),
             poll_interval: if is_local { AtomicU64::new(250) } else { AtomicU64::new(7000) },
@@ -388,6 +395,135 @@ impl RpcClientInner {
         method: impl Into<Cow<'static, str>>,
     ) -> RpcCall<NoParams, Resp> {
         self.request(method, [])
+    }
+}
+
+// ── General HTTP methods ────────────────────────────────────────────────────
+
+#[cfg(feature = "plain-http")]
+#[allow(unreachable_pub)]
+pub mod http_impl {
+    use super::*;
+    use serde::{de::DeserializeOwned, Serialize};
+
+    /// Response type for general HTTP requests.
+    pub use reqwest::Response as HttpResponse;
+
+    /// A request builder for general HTTP operations via `RpcClient`.
+    #[derive(Debug)]
+    pub struct HttpRequestBuilder {
+        inner: reqwest::RequestBuilder,
+    }
+
+    impl HttpRequestBuilder {
+        pub(crate) fn new(inner: reqwest::RequestBuilder) -> Self {
+            Self { inner }
+        }
+
+        /// Add a header.
+        pub fn header(self, key: &str, value: &str) -> Self {
+            Self { inner: self.inner.header(key, value) }
+        }
+
+        /// Add bearer token authentication.
+        pub fn bearer(self, token: &str) -> Self {
+            Self { inner: self.inner.bearer_auth(token) }
+        }
+
+        /// Set a JSON body.
+        pub fn json<B: Serialize + ?Sized>(self, body: &B) -> Self {
+            Self { inner: self.inner.json(body) }
+        }
+
+        /// Set an `application/x-www-form-urlencoded` body.
+        pub fn form<B: Serialize + ?Sized>(self, body: &B) -> Self {
+            Self { inner: self.inner.form(body) }
+        }
+
+        /// Add a query parameter.
+        pub fn query(self, key: &str, value: &str) -> Self {
+            Self { inner: self.inner.query(&[(key, value)]) }
+        }
+
+        /// Send the request and return a successful response.
+        pub async fn send(self) -> TransportResult<HttpResponse> {
+            let response = self.inner.send().await.map_err(TransportErrorKind::custom)?;
+            let status = response.status();
+            if status.is_success() {
+                return Ok(response);
+            }
+
+            let body = response.text().await.map_err(TransportErrorKind::custom)?;
+            Err(TransportErrorKind::http_error(status.as_u16(), body))
+        }
+    }
+
+    impl RpcClient {
+        /// Attach a `reqwest::Client` for general HTTP operations.
+        pub(crate) fn with_plain_http_client(mut self, client: reqwest::Client) -> Self {
+            let inner =
+                Arc::get_mut(&mut self.0).expect("newly created RpcClient must be uniquely owned");
+            inner.http_client = Some(client);
+            self
+        }
+
+        /// Returns the stored `reqwest::Client`, or `None` if unavailable.
+        pub fn http_client(&self) -> Option<&reqwest::Client> {
+            self.0.http_client.as_ref()
+        }
+
+        /// Start a GET request.
+        pub fn get(&self, url: &str) -> TransportResult<HttpRequestBuilder> {
+            Ok(HttpRequestBuilder::new(self.require_http_client()?.get(url)))
+        }
+
+        /// Start a POST request.
+        pub fn post(&self, url: &str) -> TransportResult<HttpRequestBuilder> {
+            Ok(HttpRequestBuilder::new(self.require_http_client()?.post(url)))
+        }
+
+        /// Start a PUT request.
+        pub fn put(&self, url: &str) -> TransportResult<HttpRequestBuilder> {
+            Ok(HttpRequestBuilder::new(self.require_http_client()?.put(url)))
+        }
+
+        /// Start a DELETE request.
+        pub fn delete(&self, url: &str) -> TransportResult<HttpRequestBuilder> {
+            Ok(HttpRequestBuilder::new(self.require_http_client()?.delete(url)))
+        }
+
+        /// POST JSON to a URL and parse the JSON response.
+        pub async fn post_json<B, T>(&self, url: &str, body: &B) -> TransportResult<T>
+        where
+            B: Serialize + ?Sized,
+            T: DeserializeOwned,
+        {
+            self.post(url)?
+                .json(body)
+                .send()
+                .await?
+                .json::<T>()
+                .await
+                .map_err(TransportErrorKind::custom)
+        }
+
+        /// GET a URL and parse the response as JSON.
+        pub async fn get_json<T: DeserializeOwned>(&self, url: &str) -> TransportResult<T> {
+            self.get(url)?.send().await?.json::<T>().await.map_err(TransportErrorKind::custom)
+        }
+
+        /// GET a URL and return the response as text.
+        pub async fn get_text(&self, url: &str) -> TransportResult<String> {
+            self.get(url)?.send().await?.text().await.map_err(TransportErrorKind::custom)
+        }
+
+        fn require_http_client(&self) -> TransportResult<&reqwest::Client> {
+            self.0.http_client.as_ref().ok_or_else(|| {
+                TransportErrorKind::custom_str(
+                    "RpcClient has no HTTP client configured; build it with plain_http",
+                )
+            })
+        }
     }
 }
 

@@ -1,38 +1,71 @@
 use alloy_rpc_client::{ClientBuilder, RpcCall};
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Value};
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct HyperliquidMeta {
-    universe: Vec<HyperliquidAsset>,
+#[serde(try_from = "Value")]
+struct HyperliquidMarketContext {
+    universe_len: usize,
+    context_len: usize,
+    has_btc: bool,
+    valid_sz_decimals: bool,
+    positive_mark_prices: bool,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct HyperliquidAsset {
-    name: String,
-    sz_decimals: u8,
-}
+impl TryFrom<Value> for HyperliquidMarketContext {
+    type Error = String;
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct HyperliquidAssetContext {
-    mark_px: String,
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        let Value::Array(mut values) = value else {
+            return Err("expected [meta, asset_contexts] response".to_owned());
+        };
+        if values.len() != 2 {
+            return Err(format!("expected 2 response entries, got {}", values.len()));
+        }
+
+        let contexts = values.pop().unwrap();
+        let meta = values.pop().unwrap();
+        let universe = meta
+            .get("universe")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "missing meta.universe array".to_owned())?;
+        let contexts =
+            contexts.as_array().ok_or_else(|| "missing asset contexts array".to_owned())?;
+
+        Ok(Self {
+            universe_len: universe.len(),
+            context_len: contexts.len(),
+            has_btc: universe
+                .iter()
+                .any(|asset| asset.get("name").and_then(Value::as_str) == Some("BTC")),
+            valid_sz_decimals: universe.iter().all(|asset| {
+                asset
+                    .get("szDecimals")
+                    .and_then(Value::as_u64)
+                    .is_some_and(|decimals| decimals <= 8)
+            }),
+            positive_mark_prices: contexts.iter().all(|ctx| {
+                ctx.get("markPx")
+                    .and_then(Value::as_str)
+                    .and_then(|mark_px| mark_px.parse::<f64>().ok())
+                    .is_some_and(|mark_px| mark_px > 0.0)
+            }),
+        })
+    }
 }
 
 #[tokio::test]
 async fn it_posts_plain_json_to_hyperliquid_info() {
     let client =
         ClientBuilder::default().plain_http("https://api.hyperliquid.xyz/info".parse().unwrap());
-    let req: RpcCall<_, _, (HyperliquidMeta, Vec<HyperliquidAssetContext>)> =
+    let req: RpcCall<_, _, HyperliquidMarketContext> =
         client.request_json(json!({ "type": "metaAndAssetCtxs" }));
     let timeout = tokio::time::timeout(std::time::Duration::from_secs(10), req);
     let response = timeout.await.unwrap().unwrap();
 
-    assert!(response.0.universe.len() > 100);
-    assert_eq!(response.0.universe.len(), response.1.len());
-    assert!(response.0.universe.iter().any(|asset| asset.name == "BTC"));
-    assert!(response.0.universe.iter().all(|asset| asset.sz_decimals <= 8));
-    assert!(response.1.iter().all(|ctx| ctx.mark_px.parse::<f64>().unwrap() > 0.0));
+    assert!(response.universe_len > 100);
+    assert_eq!(response.universe_len, response.context_len);
+    assert!(response.has_btc);
+    assert!(response.valid_sz_decimals);
+    assert!(response.positive_mark_prices);
 }
